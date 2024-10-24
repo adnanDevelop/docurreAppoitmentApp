@@ -13,13 +13,14 @@ import {
   verifyEmail,
 } from "../controller/userController.js";
 import isAuthenticated from "../middleware/isAuthenticated.js";
+import { singleUpload } from "../middleware/multer.js";
 
 const router = express.Router();
 
 router.route("/register").post(register);
 router.route("/login").post(login);
 router.route("/logout").get(logout);
-router.route("/update-user/:id").put(updateUser);
+router.route("/update-user/:id").put(isAuthenticated, singleUpload, updateUser);
 router.route("/delete-user/:id").delete(deleteUser);
 router.route("/user").get(isAuthenticated, getAllUsers);
 router.route("/user/:id").get(isAuthenticated, getUserById);

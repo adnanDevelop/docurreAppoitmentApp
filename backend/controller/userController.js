@@ -1,48 +1,20 @@
 import bcrypt from "bcrypt";
-import { generateVerificationCode } from "../utils/verificationCode.js";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { User } from "../model/userModel.js";
-import { Invitation } from "../model/invitationModel.js";
 import { errorHandler, responseHandler } from "../utils/handler.js";
+import { generateVerificationCode } from "../utils/verificationCode.js";
+import getDataUri from "../middleware/datauri.js";
+import cloudinary from "../middleware/cloudinary.js";
+cloudinary.config();
 
 // Register Controller
 export const register = async (req, res) => {
   try {
-    const {
-      fullName,
-      userName,
-      email,
-      password,
-      gender,
-      phoneNumber,
-      inviteToken,
-    } = req.body;
+    const { fullName, email, password, gender, phoneNumber } = req.body;
 
-    if (
-      !fullName ||
-      !userName ||
-      !email ||
-      !password ||
-      !gender ||
-      !phoneNumber
-    ) {
+    if (!fullName || !email || !password || !gender || !phoneNumber) {
       return res.status(400).json({ message: "All fields are required" });
-    }
-
-    let sender = null;
-    if (inviteToken) {
-      const invitation = await Invitation.findOne({
-        token: inviteToken,
-        status: "pending",
-      });
-      if (!invitation) {
-        return errorHandler(res, 400, "Invalid or expired invitation token.");
-      }
-      invitation.status = "accepted";
-      await invitation.save();
-
-      sender = await User.findById(invitation.senderId);
     }
 
     const existingUser = await User.findOne({ email });
@@ -53,8 +25,6 @@ export const register = async (req, res) => {
     }
 
     const hashPassword = await bcrypt.hash(password, 10);
-    const malePicture = `https://avatar.iran.liara.run/public/boy?username=${userName}`;
-    const femalePicture = `https://avatar.iran.liara.run/public/girl?username=${userName}`;
 
     // Generating unique token
     const verificationCode = generateVerificationCode(6);
@@ -62,12 +32,11 @@ export const register = async (req, res) => {
 
     const data = await User.create({
       fullName,
-      userName,
       email,
       password: hashPassword,
       gender,
       phoneNumber,
-      profilePhoto: gender === "male" ? malePicture : femalePicture,
+      profilePhoto: "",
       verificationCode,
       verificationExpiration,
     });
@@ -91,14 +60,6 @@ export const register = async (req, res) => {
     };
 
     await transporter.sendMail(mailOptions);
-
-    if (sender) {
-      sender.friends.push(data._id);
-      await sender.save();
-
-      data.friends.push(sender._id);
-      await data.save();
-    }
 
     const userData = {
       _id: data._id,
@@ -185,27 +146,34 @@ export const login = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { fullName, userName, email, gender, aboutProfile } = req.body;
+    const files = req.files;
+    let profilePhotoUrl;
+    const { fullName, email, aboutProfile } = req.body;
+
+    // Upload profile photo to Cloudinary if it exists
+    if (files.profilePhoto && files.profilePhoto.length > 0) {
+      const profilePhotoUri = getDataUri(files.profilePhoto[0]);
+      const cloudinaryResponse = await cloudinary.uploader.upload(
+        profilePhotoUri.content
+      );
+      profilePhotoUrl = cloudinaryResponse.secure_url;
+    }
 
     const findUser = await User.findById({ _id: userId });
 
-    if (fullName) findUser.fullName = fullName;
-    if (userName) findUser.userName = userName;
     if (email) findUser.email = email;
-    if (gender) findUser.gender = gender;
+    if (fullName) findUser.fullName = fullName;
     if (aboutProfile) findUser.aboutProfile = aboutProfile;
+    if (profilePhotoUrl) findUser.profilePhoto = profilePhotoUrl;
 
     await findUser.save();
 
     const userData = {
       _id: findUser._id,
-      fullName: findUser.fullName,
-      userName: findUser.userName,
       email: findUser.email,
+      fullName: findUser.fullName,
       profilePhoto: findUser.profilePhoto,
-      gender: findUser.gender,
       aboutProfile: findUser.aboutProfile,
-      friends: findUser.friends,
     };
 
     return responseHandler(res, 200, userData, "User updated successfully");

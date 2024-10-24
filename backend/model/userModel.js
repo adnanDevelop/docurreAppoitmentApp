@@ -6,11 +6,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    userName: {
-      type: String,
-      required: true,
-      unique: true,
-    },
     email: {
       type: String,
       required: true,
@@ -35,12 +30,7 @@ const userSchema = new mongoose.Schema(
       enum: ["male", "female"],
       default: "male",
     },
-    friends: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
+
     resetToken: { type: String, default: null },
     resetTokenExpiration: { type: Date, default: null },
     // isVerified: { type: Boolean, default: false },
