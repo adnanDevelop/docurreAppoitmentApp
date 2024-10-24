@@ -11,9 +11,9 @@ cloudinary.config();
 // Register Controller
 export const register = async (req, res) => {
   try {
-    const { fullName, email, password, gender, phoneNumber } = req.body;
+    const { fullName, email, password, gender, phoneNumber, role } = req.body;
 
-    if (!fullName || !email || !password || !gender || !phoneNumber) {
+    if (!fullName || !email || !password || !gender || !phoneNumber || !role) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -31,13 +31,14 @@ export const register = async (req, res) => {
     const verificationExpiration = Date.now() + 3600000;
 
     const data = await User.create({
-      fullName,
+      role,
       email,
-      password: hashPassword,
       gender,
+      fullName,
       phoneNumber,
       profilePhoto: "",
       verificationCode,
+      password: hashPassword,
       verificationExpiration,
     });
 
@@ -87,7 +88,7 @@ export const register = async (req, res) => {
 // Login Controller
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     const isUserExist = await User.findOne({ email });
     if (!isUserExist) {
@@ -103,6 +104,11 @@ export const login = async (req, res) => {
       return res.status(404).json({ message: "Invalid password" });
     }
 
+    // if role doesn't exist
+    if (role !== isUserExist.role) {
+      return errorHandler(res, 400, "User doesn't exist with current role");
+    }
+
     // generate token
     const generateToken = jwt.sign(
       {
@@ -114,13 +120,13 @@ export const login = async (req, res) => {
 
     const userData = {
       _id: isUserExist._id,
+      role: isUserExist.role,
+      email: isUserExist.email,
+      gender: isUserExist.gender,
       fullName: isUserExist.fullName,
       userName: isUserExist.userName,
-      email: isUserExist.email,
       profilePhoto: isUserExist.profilePhoto,
-      gender: isUserExist.gender,
       favouriteContacts: isUserExist.favouriteContacts,
-      friends: isUserExist.friends,
     };
 
     // login user
@@ -213,8 +219,36 @@ export const logout = async (req, res) => {
 // Get all User except login user
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({}).select("-password");
-    return responseHandler(res, 200, users, "Data retreived successfully");
+    const { search, page = 1, limit = 12 } = req.query;
+    let query = {};
+
+    if (search) {
+      query = {
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ],
+      };
+    }
+
+    const skip = (page - 1) * limit;
+    const allUsers = await User.find(query)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select("-password");
+
+    const totalUsers = await User.countDocuments(query);
+
+    return res.status(200).json({
+      status: 200,
+      message: "Data retrieved successfully",
+      data: allUsers,
+      pagination: {
+        currentPage: page,
+        limit: limit,
+        totalDocuments: totalUsers,
+      },
+    });
   } catch (error) {
     return errorHandler(res, 400, error.message);
   }
@@ -282,81 +316,113 @@ export const requestPasswordReset = async (req, res) => {
   }
 };
 
-// Password reset response controller
-export const resetPassword = async (req, res) => {
+// Forgot Password Controller
+export const forgetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { email } = req.body;
 
-    const user = await User.findOne({
-      resetToken: token,
-      resetTokenExpiration: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({ message: "Invalid or expired token." });
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
     }
 
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ message: "User with this email does not exist" });
+    }
+
+    const resetToken = generateVerificationCode(4);
+    const resetTokenExpiration = Date.now() + 3600000;
+
+    // Update user with the reset token and expiration time
+    user.resetToken = resetToken;
+    user.resetTokenExpiration = resetTokenExpiration;
+    await user.save();
+
+    // Send email with the reset code
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Password Reset Code",
+      html: `<p>Your password reset code is:</p>
+             <h3>${resetToken}</h3>
+             <p>This code is valid for one hour.</p>`,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return responseHandler(res, 200, "Reset code has been sent to your email.");
+  } catch (error) {
+    return errorHandler(res, 500, error.message);
+  }
+};
+
+// Verify Reset Code Controller
+export const verifyResetCode = async (req, res) => {
+  try {
+    const { email, resetToken } = req.body;
+
+    if (!email || !resetToken) {
+      return res
+        .status(400)
+        .json({ message: "Email and reset code are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (
+      user.resetToken !== resetToken ||
+      Date.now() > user.resetTokenExpiration
+    ) {
+      return res.status(400).json({ message: "Invalid or expired reset code" });
+    }
+
+    return responseHandler(res, 200, "You can now reset your password.");
+  } catch (error) {
+    return errorHandler(res, 500, error.message);
+  }
+};
+
+// Reset Password Controller
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (Date.now() > user.resetTokenExpiration) {
+      return res.status(400).json({ message: "Invalid or expired reset code" });
+    }
+
+    // Hash the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
+
     user.password = hashedPassword;
     user.resetToken = null;
     user.resetTokenExpiration = null;
     await user.save();
 
-    return responseHandler(res, 200, "Password reset successfully");
+    return responseHandler(res, 200, "Password has been reset successfully.");
   } catch (error) {
-    return errorHandler(res, 400, error.message);
-  }
-};
-
-// Update password controller
-export const updatePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.id;
-
-    const user = await User.findById(userId);
-    const comparePassword = await bcrypt.compare(
-      currentPassword,
-      user.password
-    );
-
-    if (!comparePassword) {
-      return errorHandler(res, 400, "Password does not match");
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
-
-    return responseHandler(res, 200, "Password updated successfully");
-  } catch (error) {
-    return errorHandler(res, 400, error.message);
-  }
-};
-
-// Email Verification Controller
-export const verifyEmail = async (req, res) => {
-  try {
-    const { code } = req.body;
-
-    const user = await User.findOne({
-      verificationCode: code,
-      verificationExpiration: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired verification token." });
-    }
-
-    user.verificationCode = code;
-    user.verificationExpiration = null;
-    user.isVerified = true;
-    await user.save();
-
-    return responseHandler(res, 200, "Email verified successfully.");
-  } catch (error) {
-    return errorHandler(res, 400, error.message);
+    return errorHandler(res, 500, error.message);
   }
 };

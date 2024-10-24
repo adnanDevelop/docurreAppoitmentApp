@@ -31,6 +31,11 @@ const userSchema = new mongoose.Schema(
       default: "male",
     },
 
+    role: {
+      type: String,
+      enum: ["patient", "doctor"],
+      default: "patient",
+    },
     resetToken: { type: String, default: null },
     resetTokenExpiration: { type: Date, default: null },
     // isVerified: { type: Boolean, default: false },

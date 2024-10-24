@@ -6,11 +6,10 @@ import {
   login,
   logout,
   register,
-  requestPasswordReset,
-  resetPassword,
-  updatePassword,
   updateUser,
-  verifyEmail,
+  forgetPassword,
+  verifyResetCode,
+  resetPassword,
 } from "../controller/userController.js";
 import isAuthenticated from "../middleware/isAuthenticated.js";
 import { singleUpload } from "../middleware/multer.js";
@@ -20,13 +19,12 @@ const router = express.Router();
 router.route("/register").post(register);
 router.route("/login").post(login);
 router.route("/logout").get(logout);
-router.route("/update-user/:id").put(isAuthenticated, singleUpload, updateUser);
 router.route("/delete-user/:id").delete(deleteUser);
 router.route("/user").get(isAuthenticated, getAllUsers);
 router.route("/user/:id").get(isAuthenticated, getUserById);
-router.route("/update-password").put(isAuthenticated, updatePassword);
-router.route("/request-password-reset").post(requestPasswordReset);
+router.route("/user/forget-password").post(isAuthenticated, forgetPassword);
+router.route("/update-user/:id").put(isAuthenticated, singleUpload, updateUser);
+router.route("/reset-code").post(verifyResetCode);
 router.route("/reset-password").post(resetPassword);
-router.route("/verify-email").post(verifyEmail);
 
 export default router;
