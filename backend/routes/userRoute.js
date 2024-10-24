@@ -22,7 +22,7 @@ router.route("/logout").get(logout);
 router.route("/delete-user/:id").delete(deleteUser);
 router.route("/user").get(isAuthenticated, getAllUsers);
 router.route("/user/:id").get(isAuthenticated, getUserById);
-router.route("/user/forget-password").post(isAuthenticated, forgetPassword);
+router.route("/forget-password").post(isAuthenticated, forgetPassword);
 router.route("/update-user/:id").put(isAuthenticated, singleUpload, updateUser);
 router.route("/reset-code").post(verifyResetCode);
 router.route("/reset-password").post(resetPassword);
