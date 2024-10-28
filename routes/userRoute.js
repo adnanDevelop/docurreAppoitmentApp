@@ -20,9 +20,7 @@ router.route("/register").post(register);
 router.route("/login").post(login);
 router.route("/logout").get(logout);
 router.route("/delete-user/:id").delete(deleteUser);
-router.route("/user").get((req, res) => {
-  return res.send("hello");
-});
+router.route("/user").get((getAllUsers));
 router.route("/user/:id").get(isAuthenticated, getUserById);
 router.route("/forget-password").post(isAuthenticated, forgetPassword);
 router.route("/update-user/:id").put(isAuthenticated, singleUpload, updateUser);
