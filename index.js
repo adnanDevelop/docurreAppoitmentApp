@@ -23,6 +23,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use("/api/auth", userRoute);
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
 
 // Server running
 const PORT = process.env.PORT || 3000;
